@@ -1,0 +1,30 @@
+# 依赖
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+vendor/
+
+# 环境变量 / 密钥（绝对不要提交）
+.env
+*.env
+.env.*
+secrets.json
+credentials.json
+*.pem
+*.key
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+*.sublime-*
+
+# 构建产物 / 日志
+dist/
+build/
+out/
+*.log
