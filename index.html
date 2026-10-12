@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>空间编辑器</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f6f9;color:#172033;font:14px/1.45 Arial,"Microsoft YaHei",sans-serif}header{height:58px;padding:0 24px;background:#111827;color:#fff;display:flex;align-items:center;justify-content:space-between}header b{font-size:18px}.app{min-height:calc(100vh - 58px);display:grid;grid-template-columns:365px 1fr;gap:16px;padding:16px}.panel{background:#fff;border:1px solid #e1e7ef;border-radius:10px;padding:16px;overflow:auto}.section{border-bottom:1px solid #e5e9f0;padding-bottom:15px;margin-bottom:15px}h2{font-size:14px;margin:0 0 8px}.note,#status{font-size:12px;color:#667085;margin:0 0 9px}textarea{width:100%;height:132px;padding:9px;border:1px solid #d4dce8;border-radius:7px;background:#fbfcfe;font:11px/1.4 Consolas,monospace;resize:vertical}button{border:0;border-radius:6px;background:#2563eb;color:#fff;padding:8px 10px;font-weight:bold;cursor:pointer;margin:8px 5px 0 0}.muted{background:#e9eef5;color:#334155}.danger{background:#fee2e2;color:#b91c1c}.top{display:flex;justify-content:space-between;gap:8px;align-items:start;margin-bottom:14px}.canvasbox{height:calc(100vh - 154px);min-height:480px;overflow:auto;background:#edf1f6;padding:28px;border:1px solid #dbe3ef;border-radius:9px}.canvas{position:relative;margin:auto;background-color:#fff;background-image:linear-gradient(#e5e7eb 1px,transparent 1px),linear-gradient(90deg,#e5e7eb 1px,transparent 1px);box-shadow:0 3px 12px #0002}.base{position:absolute;pointer-events:none}.wall{background:#374151}.door{background:#fff;border:2px solid #a16207}.window{background:#bae6fd;border:2px solid #0284c7}.palette{display:grid;grid-template-columns:1fr 1fr;gap:8px}.item{padding:9px;min-height:65px;border:1px solid #d8e0ec;border-left:5px solid var(--c);border-radius:7px;cursor:grab;font-weight:bold}.item small{display:block;color:#667085;font-size:11px;margin-top:4px}.device{position:absolute;display:flex;align-items:center;justify-content:center;text-align:center;color:#fff;border:2px solid #fff;border-radius:5px;box-shadow:0 2px 5px #0004;cursor:move;font-size:12px;font-weight:bold;padding:3px;user-select:none}.device small{display:block;font-size:10px;font-weight:normal}.selected{outline:3px solid #f59e0b;outline-offset:2px}@media(max-width:850px){.app{grid-template-columns:1fr}.canvasbox{height:600px}}</style></head>
+<body><header><b>空间编辑器</b><span>单位：米 · 网格：1 米</span></header>
+<main class="app"><aside class="panel">
+<div class="section"><h2>基底 baseJson</h2><p class="note">墙体、门窗为锁定基底，不可选择或拖动。</p><textarea id="baseText">{
+  "width":10,"height":7,"wallThickness":0.2,
+  "elements":[
+    {"type":"wall","x":0,"y":0,"width":10,"height":0.2},
+    {"type":"wall","x":0,"y":6.8,"width":10,"height":0.2},
+    {"type":"wall","x":0,"y":0,"width":0.2,"height":7},
+    {"type":"wall","x":9.8,"y":0,"width":0.2,"height":7},
+    {"type":"door","x":4.1,"y":6.78,"width":1.2,"height":0.22},
+    {"type":"window","x":9.78,"y":1.6,"width":0.22,"height":1.5}
+  ]
+}</textarea><button class="muted" id="baseApply">应用基底 JSON</button></div>
+<div class="section"><h2>组件 components JSON</h2><p class="note">修改清单或尺寸后点击应用；不会自动生成未知设备。</p><textarea id="compText">[
+ {"id":"bench","name":"不锈钢操作台","width":2,"height":1,"color":"#475569"},
+ {"id":"sink","name":"双槽水池","width":1,"height":1,"color":"#0f766e"},
+ {"id":"fridge","name":"冷藏柜","width":1,"height":1,"color":"#2563eb"},
+ {"id":"stove","name":"四头炉","width":1.2,"height":1,"color":"#dc2626"},
+ {"id":"shelf","name":"货架","width":1.2,"height":0.5,"color":"#7c3aed"}
+]</textarea><button class="muted" id="compApply">应用组件 JSON</button></div>
+<h2>可拖拽设备</h2><div class="palette" id="palette"></div></aside>
+<section class="panel"><div class="top"><div><h2 style="font-size:17px">布局画布</h2><p id="status">拖拽左侧设备至画布</p></div><div><button class="danger" id="delete">删除选中</button><button id="export">导出布局 JSON</button><button id="import">导入布局 JSON</button></div></div><div class="canvasbox"><div class="canvas" id="canvas"></div></div></section></main>
+<script>
+(()=>{const S=60,$=x=>document.getElementById(x),canvas=$("canvas");let base,comps,layout={version:1,placements:[]},selected=null,drag=null;const component=id=>comps.find(c=>c.id===id),say=(m,b=false)=>{$("status").textContent=m;$("status").style.color=b?"#dc2626":"#667085"},parse=(x,n)=>{try{return JSON.parse(x)}catch(e){throw Error(n+" 格式错误")}},snap=n=>Math.max(0,Math.round(n));
+function renderPalette(){let p=$("palette");p.innerHTML="";comps.forEach(c=>{let d=document.createElement("div");d.className="item";d.draggable=true;d.style.setProperty("--c",c.color||"#2563eb");d.innerHTML=c.name+"<small>"+c.width+"m × "+c.height+"m</small>";d.ondragstart=e=>e.dataTransfer.setData("component",c.id);p.append(d)})}
+function render(){canvas.innerHTML="";canvas.style.width=base.width*S+"px";canvas.style.height=base.height*S+"px";canvas.style.backgroundSize=S+"px "+S+"px";base.elements.forEach(e=>{let d=document.createElement("div");d.className="base "+e.type;d.style.cssText="left:"+e.x*S+"px;top:"+e.y*S+"px;width:"+e.width*S+"px;height:"+e.height*S+"px";canvas.append(d)});layout.placements.forEach(p=>{let c=component(p.componentId);if(!c)return;let d=document.createElement("div");d.className="device "+(selected===p.instanceId?"selected":"");d.style.cssText="left:"+p.x*S+"px;top:"+p.y*S+"px;width:"+c.width*S+"px;height:"+c.height*S+"px;background:"+c.color;d.innerHTML="<div>"+c.name+"<small>"+c.width+"m × "+c.height+"m</small></div>";d.onpointerdown=e=>start(e,p,c);canvas.append(d)})}
+function clamp(e,c,ox=0,oy=0){let r=canvas.getBoundingClientRect(),x=snap((e.clientX-r.left-ox)/S),y=snap((e.clientY-r.top-oy)/S);return{x:Math.min(x,Math.floor(base.width-c.width)),y:Math.min(y,Math.floor(base.height-c.height))}}
+function start(e,p,c){e.preventDefault();let r=canvas.getBoundingClientRect();selected=p.instanceId;drag={p,c,ox:e.clientX-r.left-p.x*S,oy:e.clientY-r.top-p.y*S};render()}
+canvas.ondragover=e=>e.preventDefault();canvas.ondrop=e=>{e.preventDefault();let c=component(e.dataTransfer.getData("component"));if(!c)return;let p=clamp(e,c,c.width*S/2,c.height*S/2),id="item_"+Date.now();layout.placements.push({instanceId:id,componentId:c.id,x:p.x,y:p.y});selected=id;render();say("已添加 "+c.name)};
+window.onpointermove=e=>{if(!drag)return;let v=clamp(e,drag.c,drag.ox,drag.oy);drag.p.x=v.x;drag.p.y=v.y;render()};window.onpointerup=()=>{if(drag)say("设备已吸附至网格");drag=null};canvas.onpointerdown=e=>{if(e.target===canvas){selected=null;render()}};
+$("baseApply").onclick=()=>{try{let v=parse($("baseText").value,"baseJson");if(!v.width||!v.height||!Array.isArray(v.elements))throw Error("baseJson 需含 width、height、elements");base=v;render();say("基底已更新")}catch(e){say(e.message,true)}};
+$("compApply").onclick=()=>{try{let v=parse($("compText").value,"components JSON");if(!Array.isArray(v)||!v.every(c=>c.id&&c.name&&c.width>0&&c.height>0))throw Error("组件字段不完整");comps=v;layout.placements=layout.placements.filter(p=>component(p.componentId));renderPalette();render();say("组件面板已更新")}catch(e){say(e.message,true)}};
+$("delete").onclick=()=>{if(!selected)return say("请先选择设备",true);layout.placements=layout.placements.filter(p=>p.instanceId!==selected);selected=null;render();say("已删除设备")};
+$("export").onclick=async()=>{let t=JSON.stringify(layout,null,2);try{await navigator.clipboard.writeText(t);say("布局 JSON 已复制")}catch(e){prompt("复制布局 JSON：",t)}};
+$("import").onclick=()=>{let t=prompt("粘贴 layoutJson：");if(!t)return;try{let v=parse(t,"layoutJson"),a=Array.isArray(v)?v:v.placements;if(!Array.isArray(a))throw Error("需含 placements 数组");layout={version:1,placements:a.filter(p=>component(p.componentId)).map((p,i)=>({instanceId:p.instanceId||"import_"+i,componentId:p.componentId,x:snap(p.x),y:snap(p.y)}))};selected=null;render();say("布局已恢复")}catch(e){say(e.message,true)}};
+base=parse($("baseText").value,"baseJson");comps=parse($("compText").value,"components JSON");renderPalette();render()})();
+</script></body></html>
