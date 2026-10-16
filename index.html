@@ -13,7 +13,28 @@ document.addEventListener("DOMContentLoaded", function () {
   const status = document.getElementById("status");
   const clearButton = importButton.nextElementSibling;
   const jsonImport = window.__kitchenJsonImport;
+  const grid = canvas.querySelector(".grid-layer");
+  const sampleCanvasSize = { width: canvas.style.width, height: canvas.style.height };
   let svgUrl = null;
+
+  grid.style.backgroundSize = "25px 25px, 25px 25px, 100px 100px, 100px 100px";
+
+  function sizeFromSvg(text) {
+    const root = text.match(/<svg\b[^>]*>/i);
+    if (!root) return null;
+    const attribute = function (name) {
+      const match = root[0].match(new RegExp("\\b" + name + "\\s*=\\s*['\\"]([^'\\"]+)['\\"]", "i"));
+      return match ? match[1].trim() : null;
+    };
+    const width = attribute("width");
+    const height = attribute("height");
+    const units = attribute("data-units");
+    if (!width || !height || !(units === "mm" || /mm$/i.test(width) && /mm$/i.test(height))) return null;
+    const widthMm = Number.parseFloat(width);
+    const heightMm = Number.parseFloat(height);
+    if (!Number.isFinite(widthMm) || !Number.isFinite(heightMm) || widthMm <= 0 || heightMm <= 0) return null;
+    return { width: widthMm / 1000, height: heightMm / 1000 };
+  }
 
   function clearSvgBase(showStatus) {
     const floorplan = canvas.querySelector(".floorplan");
@@ -21,26 +42,34 @@ document.addEventListener("DOMContentLoaded", function () {
     if (svgUrl) URL.revokeObjectURL(svgUrl);
     svgUrl = null;
     canvas.classList.remove("svg-active");
+    canvas.style.width = sampleCanvasSize.width;
+    canvas.style.height = sampleCanvasSize.height;
     clearButton.disabled = true;
     if (showStatus) status.textContent = "已清除 SVG 底图，恢复示例基底";
   }
 
-  function importSvg(file) {
+  function importSvg(file, size) {
     clearSvgBase(false);
     svgUrl = URL.createObjectURL(file);
     const floorplan = document.createElement("img");
     floorplan.className = "floorplan";
     floorplan.alt = "导入的 SVG 平面图（锁定底图）";
     floorplan.src = svgUrl;
+    if (size) {
+      canvas.style.width = (size.width * 100) + "px";
+      canvas.style.height = (size.height * 100) + "px";
+      floorplan.style.objectFit = "fill";
+    }
     floorplan.onerror = function () {
       clearSvgBase(false);
       status.textContent = "SVG 无法显示，请确认文件内容完整";
     };
-    const grid = canvas.querySelector(".grid-layer");
     canvas.insertBefore(floorplan, grid);
     canvas.classList.add("svg-active");
     clearButton.disabled = false;
-    status.textContent = "已导入 SVG 平面图；它已锁定在网格下方，仍可拖拽厨具";
+    status.textContent = size
+      ? "已按 SVG 的 " + size.width.toFixed(2) + "m × " + size.height.toFixed(2) + "m 尺寸校准；每小格为 0.25m，底图已锁定"
+      : "已导入 SVG 平面图；它已锁定在网格下方，仍可拖拽厨具";
   }
 
   function looksLikeSvg(text) {
@@ -55,7 +84,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const text = String(reader.result || "");
       const saysSvg = /\.svg$/i.test(file.name) || file.type === "image/svg+xml";
       if (saysSvg || looksLikeSvg(text)) {
-        if (looksLikeSvg(text)) importSvg(file);
+        if (looksLikeSvg(text)) importSvg(file, sizeFromSvg(text));
         else status.textContent = "SVG 文件格式无效";
       } else {
         jsonImport({ target: fileInput });
