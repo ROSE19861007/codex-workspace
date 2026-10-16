@@ -13,17 +13,28 @@ document.addEventListener("DOMContentLoaded", function () {
   const status = document.getElementById("status");
   const clearButton = importButton.nextElementSibling;
   const jsonImport = window.__kitchenJsonImport;
-  const grid = canvas.querySelector(".grid-layer");
+  let grid = canvas.querySelector(".grid-layer");
   const sampleCanvasSize = { width: canvas.style.width, height: canvas.style.height };
   let svgUrl = null;
 
-  grid.style.backgroundSize = "25px 25px, 25px 25px, 100px 100px, 100px 100px";
+  function ensureGrid() {
+    grid = canvas.querySelector(".grid-layer");
+    if (!grid) {
+      grid = document.createElement("div");
+      grid.className = "grid-layer";
+      canvas.prepend(grid);
+    }
+    grid.style.backgroundSize = "25px 25px, 25px 25px, 100px 100px, 100px 100px";
+    return grid;
+  }
+
+  ensureGrid();
 
   function sizeFromSvg(text) {
     const root = text.match(/<svg\b[^>]*>/i);
     if (!root) return null;
     const attribute = function (name) {
-      const match = root[0].match(new RegExp("\\b" + name + "\\s*=\\s*['\\"]([^'\\"]+)['\\"]", "i"));
+      const match = root[0].match(new RegExp("\\b" + name + "\\s*=\\s*['\"]([^'\"]+)['\"]", "i"));
       return match ? match[1].trim() : null;
     };
     const width = attribute("width");
@@ -37,13 +48,15 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function clearSvgBase(showStatus) {
-    const floorplan = canvas.querySelector(".floorplan");
-    if (floorplan) floorplan.remove();
     if (svgUrl) URL.revokeObjectURL(svgUrl);
     svgUrl = null;
     canvas.classList.remove("svg-active");
+    if (window.__resetCanvasSize) window.__resetCanvasSize();
+    const floorplan = canvas.querySelector(".floorplan");
+    if (floorplan) floorplan.remove();
     canvas.style.width = sampleCanvasSize.width;
     canvas.style.height = sampleCanvasSize.height;
+    ensureGrid();
     clearButton.disabled = true;
     if (showStatus) status.textContent = "已清除 SVG 底图，恢复示例基底";
   }
@@ -56,15 +69,18 @@ document.addEventListener("DOMContentLoaded", function () {
     floorplan.alt = "导入的 SVG 平面图（锁定底图）";
     floorplan.src = svgUrl;
     if (size) {
-      canvas.style.width = (size.width * 100) + "px";
-      canvas.style.height = (size.height * 100) + "px";
+      if (window.__setSvgCanvasSize) window.__setSvgCanvasSize(size.width, size.height);
+      else {
+        canvas.style.width = (size.width * 100) + "px";
+        canvas.style.height = (size.height * 100) + "px";
+      }
       floorplan.style.objectFit = "fill";
     }
     floorplan.onerror = function () {
       clearSvgBase(false);
       status.textContent = "SVG 无法显示，请确认文件内容完整";
     };
-    canvas.insertBefore(floorplan, grid);
+    canvas.insertBefore(floorplan, ensureGrid());
     canvas.classList.add("svg-active");
     clearButton.disabled = false;
     status.textContent = size
@@ -104,7 +120,7 @@ document.addEventListener("DOMContentLoaded", function () {
 <section class="workspace"><div><div class="canvas-frame"><div class="canvas" id="canvas"></div></div><div class="legend"><span><i></i>承重/全墙</span><span><i class="half"></i>非承重半墙（可拆）</span><span><i class="dot"></i>水 / 电 / 燃气 / 排烟接口</span><span>小网格：0.25m（25 × 25）</span></div></div><aside class="side"><h2>方案检查</h2><p id="status">将上方厨具模块拖到图纸区域。</p><div class="result" id="result"><p>基底墙体、门窗和接口均锁定；设备只允许在可用区域摆放。</p></div><hr style="border:0;border-top:1px solid #e5edf5;margin:12px 0"><h2>使用提示</h2><p>点击设备后可拖动或删除；标准尺寸为常见商用设备参考值，采购前请以实际厂家图纸为准。</p></aside></section></main>
 <input id="file" type="file" accept=".json,application/json" hidden>
 <script>
-(()=>{const M=100,G=25,STEP=.25,$=id=>document.getElementById(id),canvas=$("canvas");let selected=null,drag=null,rotate=null,page=0,expanded=false,activeGroup="wash",layout={version:3,placements:[]};const base={width:10,height:7,elements:[{type:"wall",x:0,y:0,width:10,height:.2,structure:"bearing",form:"full"},{type:"wall",x:0,y:6.8,width:10,height:.2,structure:"bearing",form:"full"},{type:"wall",x:0,y:0,width:.2,height:7,structure:"bearing",form:"full"},{type:"wall",x:9.8,y:0,width:.2,height:7,structure:"bearing",form:"full"},{type:"wall",x:3.4,y:1.2,width:.2,height:2.4,structure:"nonBearing",form:"half",demolitionAllowed:true},{type:"door",x:4.1,y:6.78,width:1.2,height:.22},{type:"window",x:9.78,y:1.6,width:.22,height:1.5}],utilityPoints:[{type:"power",x:1,y:1},{type:"water",x:1,y:5.8},{type:"drain",x:1.2,y:5.8},{type:"gas",x:7.8,y:1},{type:"exhaust",x:7.8,y:.5}]};const lib=[
+(()=>{const M=100,G=25,STEP=.25,$=id=>document.getElementById(id),canvas=$("canvas");let selected=null,drag=null,rotate=null,page=0,expanded=false,activeGroup="wash",layout={version:3,placements:[]};let base={width:10,height:7,elements:[{type:"wall",x:0,y:0,width:10,height:.2,structure:"bearing",form:"full"},{type:"wall",x:0,y:6.8,width:10,height:.2,structure:"bearing",form:"full"},{type:"wall",x:0,y:0,width:.2,height:7,structure:"bearing",form:"full"},{type:"wall",x:9.8,y:0,width:.2,height:7,structure:"bearing",form:"full"},{type:"wall",x:3.4,y:1.2,width:.2,height:2.4,structure:"nonBearing",form:"half",demolitionAllowed:true},{type:"door",x:4.1,y:6.78,width:1.2,height:.22},{type:"window",x:9.78,y:1.6,width:.22,height:1.5}],utilityPoints:[{type:"power",x:1,y:1},{type:"water",x:1,y:5.8},{type:"drain",x:1.2,y:5.8},{type:"gas",x:7.8,y:1},{type:"exhaust",x:7.8,y:.5}]};const sampleBase=base;const lib=[
 {id:"prep",name:"操作台",width:1.8,height:.8,color:"#526a82",cat:"备餐",needs:[],front:1,ico:""},
 {id:"shelf",name:"四层货架",width:1.2,height:.5,color:"#5879a3",cat:"储存",needs:[],front:.9,ico:""},
 {id:"singleSink",name:"单星水池",width:.8,height:.7,color:"#6299aa",cat:"洗消",needs:["water","drain"],front:1,ico:"sink"},
@@ -122,7 +138,7 @@ document.addEventListener("DOMContentLoaded", function () {
 {id:"warming",name:"保温台",width:1.2,height:.7,color:"#b47439",cat:"出餐",needs:["power"],front:1,ico:"heat"},
 {id:"pass",name:"出餐台",width:1.5,height:.6,color:"#526a82",cat:"出餐",needs:[],front:1,ico:""}];
 const get=id=>lib.find(x=>x.id===id),rr=(x,y,w,h)=>({x,y,w,h}),hit=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
-function renderBase(){canvas.innerHTML="";canvas.style.width=base.width*M+"px";canvas.style.height=base.height*M+"px";canvas.style.backgroundSize=G+"px "+G+"px, "+G+"px "+G+"px, "+M+"px "+M+"px, "+M+"px "+M+"px";base.elements.forEach(e=>{let d=document.createElement("div");d.className="base "+e.type+(e.form==="half"?" half":"");d.title=e.type==="wall"?(e.structure==="bearing"?"承重全墙":e.form==="half"?"非承重半墙（可拆）":"非承重全墙"):"锁定"+e.type;d.style.cssText="left:"+e.x*M+"px;top:"+e.y*M+"px;width:"+e.width*M+"px;height:"+e.height*M+"px";canvas.append(d)});base.utilityPoints.forEach(u=>{let d=document.createElement("div");d.className="utility";d.textContent={power:"电",water:"水",drain:"排",gas:"气",exhaust:"烟"}[u.type];d.style.cssText="left:"+u.x*M+"px;top:"+u.y*M+"px;background:"+({power:"#7656a5",water:"#2185bd",drain:"#249b8a",gas:"#d64d42",exhaust:"#526a82"}[u.type]);d.title=u.type+" 接口";canvas.append(d)});renderDevices()}
+function renderBase(){window.__setSvgCanvasSize=(width,height)=>{base={...sampleBase,width,height,elements:[],utilityPoints:[]};renderBase()};window.__resetCanvasSize=()=>{base=sampleBase;renderBase()};canvas.innerHTML="";canvas.style.width=base.width*M+"px";canvas.style.height=base.height*M+"px";canvas.style.backgroundSize=G+"px "+G+"px, "+G+"px "+G+"px, "+M+"px "+M+"px, "+M+"px "+M+"px";base.elements.forEach(e=>{let d=document.createElement("div");d.className="base "+e.type+(e.form==="half"?" half":"");d.title=e.type==="wall"?(e.structure==="bearing"?"承重全墙":e.form==="half"?"非承重半墙（可拆）":"非承重全墙"):"锁定"+e.type;d.style.cssText="left:"+e.x*M+"px;top:"+e.y*M+"px;width:"+e.width*M+"px;height:"+e.height*M+"px";canvas.append(d)});base.utilityPoints.forEach(u=>{let d=document.createElement("div");d.className="utility";d.textContent={power:"电",water:"水",drain:"排",gas:"气",exhaust:"烟"}[u.type];d.style.cssText="left:"+u.x*M+"px;top:"+u.y*M+"px;background:"+({power:"#7656a5",water:"#2185bd",drain:"#249b8a",gas:"#d64d42",exhaust:"#526a82"}[u.type]);d.title=u.type+" 接口";canvas.append(d)});renderDevices()}
 function renderDevices(){canvas.querySelectorAll(".device").forEach(x=>x.remove());layout.placements.forEach(p=>{let c=get(p.componentId);if(!c)return;let d=document.createElement("div");d.className="device"+(selected===p.instanceId?" selected":"");d.style.cssText="left:"+p.x*M+"px;top:"+p.y*M+"px;width:"+c.width*M+"px;height:"+c.height*M+"px;background:"+c.color+";transform:rotate("+(p.rotation||0)+"deg)";d.innerHTML="<div>"+c.name+"<small>"+c.width+"m × "+c.height+"m</small></div>"+(selected===p.instanceId?"<button class=\'rotate-handle\' title=\'每次旋转 90°\'>↻</button>":"");d.onpointerdown=e=>start(e,p,c);let h=d.querySelector(".rotate-handle");if(h)h.onpointerdown=e=>startRotate(e,p);canvas.append(d)})}
 const groups=[["prep","操作台 / 备餐"],["wash","用水 / 洗消"],["storage","冷藏 / 储藏"],["hot","炉灶 / 油炸"],["bake","烘焙 / 蒸烤"],["vent","排烟 / 出餐"]];function groupOf(c){return c.cat==="备餐"?"prep":c.cat==="洗消"?"wash":c.cat==="冷藏"||c.cat==="储存"?"storage":c.cat==="热厨"?"hot":c.cat==="烘焙"?"bake":"vent"}function renderShelf(){let filtered=lib.filter(c=>groupOf(c)===activeGroup),list=expanded?filtered:filtered.slice(page*6,page*6+6),box=$("items"),tabs=$("tabs");tabs.innerHTML=groups.map(g=>"<button class=\'tab "+(g[0]===activeGroup?"active":"")+"\' data-group=\'"+g[0]+"\'>"+g[1]+"</button>").join("");tabs.querySelectorAll("[data-group]").forEach(b=>b.onclick=()=>{activeGroup=b.dataset.group;page=0;expanded=false;renderShelf()});box.innerHTML="";box.style.flexWrap=expanded?"wrap":"nowrap";box.style.alignContent=expanded?"flex-start":"center";list.forEach(c=>{let d=document.createElement("div");d.className="module";d.draggable=true;d.innerHTML="<i class='ico "+c.ico+"'></i><b>"+c.name+"</b><small>"+c.width+"m × "+c.height+"m</small>";d.ondragstart=e=>e.dataTransfer.setData("component",c.id);box.append(d)});$("prev").disabled=expanded||page===0;$("next").disabled=expanded||(page+1)*6>=filtered.length;$("expand").textContent=expanded?"收起本类设备 ▴":"展开本类设备 ▾"}
 function place(e,c,ox=0,oy=0){let r=canvas.getBoundingClientRect(),x=Math.max(0,Math.min(Math.round((e.clientX-r.left-ox)/G)*STEP,base.width-c.width)),y=Math.max(0,Math.min(Math.round((e.clientY-r.top-oy)/G)*STEP,base.height-c.height));return{x,y}}
