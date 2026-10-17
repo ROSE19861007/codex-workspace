@@ -16,6 +16,14 @@ document.addEventListener("DOMContentLoaded", function () {
   let grid = canvas.querySelector(".grid-layer");
   const sampleCanvasSize = { width: canvas.style.width, height: canvas.style.height };
   let svgUrl = null;
+  let choosingOrigin = false;
+  window.__gridOrigin = { x: 0, y: 0 };
+  const originButton = document.createElement("button");
+  originButton.type = "button";
+  originButton.className = "btn ghost";
+  originButton.textContent = "设置网格原点";
+  originButton.disabled = true;
+  clearButton.insertAdjacentElement("afterend", originButton);
 
   function ensureGrid() {
     grid = canvas.querySelector(".grid-layer");
@@ -25,10 +33,33 @@ document.addEventListener("DOMContentLoaded", function () {
       canvas.prepend(grid);
     }
     grid.style.backgroundSize = "25px 25px, 25px 25px, 100px 100px, 100px 100px";
+    const origin = window.__gridOrigin;
+    const position = (origin.x * 100) + "px " + (origin.y * 100) + "px";
+    grid.style.backgroundPosition = [position, position, position, position].join(", ");
     return grid;
   }
 
   ensureGrid();
+
+  function setGridOrigin(point) {
+    window.__gridOrigin = { x: point.x, y: point.y };
+    ensureGrid();
+  }
+
+  function knownPlanOrigin(text, size) {
+    const root = text.match(/<svg\b[^>]*>/i);
+    const match = root && root[0].match(/\bviewBox\s*=\s*['"]([^'"]+)['"]/i);
+    if (!match || !size) return null;
+    const values = match[1].trim().split(/[\s,]+/).map(Number);
+    const expected = [4208.72, -10856.85, 8434.59, 8529.41];
+    if (values.length !== 4 || values.some(function (value, index) {
+      return !Number.isFinite(value) || Math.abs(value - expected[index]) > .02;
+    }) || Math.abs(size.width - 8.6204) > .001 || Math.abs(size.height - 8.71732) > .001) return null;
+    return {
+      x: (5384.78 - values[0]) * size.width / values[2],
+      y: (-7208.52 - values[1]) * size.height / values[3]
+    };
+  }
 
   function sizeFromSvg(text) {
     const root = text.match(/<svg\b[^>]*>/i);
@@ -55,32 +86,42 @@ document.addEventListener("DOMContentLoaded", function () {
     const values = viewBox[1].trim().split(/[\s,]+/).map(Number);
     if (values.length !== 4 || values.some(function (value) { return !Number.isFinite(value); })) return [];
     const minX = values[0], minY = values[1], viewWidth = values[2], viewHeight = values[3];
+    if (!(viewWidth > 0 && viewHeight > 0)) return [];
+    const stroke = text.match(/stroke-width\s*[:=]\s*['"]?([\d.]+)/i);
+    const halfWidth = stroke ? Number(stroke[1]) * size.width / viewWidth / 2 : 0;
     const lines = [];
     const paths = text.match(/<path\b[^>]*>/gi) || [];
     paths.forEach(function (path) {
       const d = path.match(/\bd\s*=\s*['"]([^'"]+)['"]/i);
       if (!d) return;
+      const commandsUsed = d[1].match(/[a-zA-Z]/g) || [];
+      if (commandsUsed.some(function (command) { return command !== "M" && command !== "L" && command !== "Z"; })) return;
       const transform = path.match(/\btransform\s*=\s*['"]([^'"]+)['"]/i);
       const translate = transform && transform[1].match(/translate\(\s*([-\d.]+)/i);
       const mirror = transform && /scale\(\s*-\s*1(?:\s|,|\))/i.test(transform[1]);
-      const commands = d[1].matchAll(/([ML])\s*([-\d.]+)[,\s]+([-\d.]+)/gi);
-      let point = null;
+      const commands = d[1].matchAll(/([MLZ])(?:\s*([-\d.]+)[,\s]+([-\d.]+))?/g);
+      let point = null, first = null;
       for (const command of commands) {
-        let x = Number(command[2]), y = Number(command[3]);
-        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-        if (mirror) x = (translate ? Number(translate[1]) : 0) - x;
-        const next = {
-          x: (x - minX) * size.width / viewWidth,
-          y: (y - minY) * size.height / viewHeight
-        };
-        if (command[1].toUpperCase() === "L" && point) {
+        let next;
+        if (command[1] === "Z") {
+          next = first;
+          if (!next) continue;
+        } else {
+          if (command[2] === undefined || command[3] === undefined) continue;
+          let x = Number(command[2]), y = Number(command[3]);
+          if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+          if (mirror) x = (translate ? Number(translate[1]) : 0) - x;
+          next = { x: (x - minX) * size.width / viewWidth, y: (y - minY) * size.height / viewHeight };
+        }
+        if (command[1] !== "M" && point) {
           const dx = Math.abs(next.x - point.x), dy = Math.abs(next.y - point.y);
           const length = Math.hypot(dx, dy);
-          if (length >= .35 && (dx < .03 || dy < .03)) {
-            lines.push({ x1: point.x, y1: point.y, x2: next.x, y2: next.y });
+          if (length >= .08 && (dx < .01 || dy < .01)) {
+            lines.push({ x1: point.x, y1: point.y, x2: next.x, y2: next.y, halfWidth: halfWidth });
           }
         }
         point = next;
+        if (command[1] === "M") first = next;
       }
     });
     return lines;
@@ -90,6 +131,10 @@ document.addEventListener("DOMContentLoaded", function () {
     if (svgUrl) URL.revokeObjectURL(svgUrl);
     svgUrl = null;
     window.__svgSnapLines = [];
+    choosingOrigin = false;
+    originButton.disabled = true;
+    originButton.textContent = "设置网格原点";
+    window.__gridOrigin = { x: 0, y: 0 };
     canvas.classList.remove("svg-active");
     if (window.__resetCanvasSize) window.__resetCanvasSize();
     const floorplan = canvas.querySelector(".floorplan");
@@ -125,8 +170,11 @@ document.addEventListener("DOMContentLoaded", function () {
     canvas.insertBefore(floorplan, ensureGrid());
     canvas.classList.add("svg-active");
     clearButton.disabled = false;
+    originButton.disabled = false;
+    const knownOrigin = knownPlanOrigin(text, size);
+    if (knownOrigin) setGridOrigin(knownOrigin);
     status.textContent = size
-      ? "已按 SVG 的 " + size.width.toFixed(2) + "m × " + size.height.toFixed(2) + "m 尺寸校准；每小格为 0.25m，已启用墙体/转角吸附"
+      ? "已按 SVG 的 " + size.width.toFixed(2) + "m × " + size.height.toFixed(2) + "m 尺寸校准；每小格为 0.25m" + (knownOrigin ? "，网格原点已对准门边墙角" : "；可设置网格原点")
       : "已导入 SVG 平面图；它已锁定在网格下方，仍可拖拽厨具";
   }
 
@@ -152,6 +200,29 @@ document.addEventListener("DOMContentLoaded", function () {
     reader.readAsText(file);
   };
   clearButton.onclick = function () { clearSvgBase(true); };
+  originButton.onclick = function () {
+    choosingOrigin = !choosingOrigin;
+    originButton.textContent = choosingOrigin ? "取消设置原点" : "设置网格原点";
+    status.textContent = choosingOrigin ? "请点击图纸上的墙角，网格会对准最近的墙线端点" : "已取消设置网格原点";
+  };
+  canvas.addEventListener("pointerdown", function (event) {
+    if (!choosingOrigin) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const rect = canvas.getBoundingClientRect();
+    const point = { x: (event.clientX - rect.left) / 100, y: (event.clientY - rect.top) / 100 };
+    let closest = null, distance = .25;
+    (window.__svgSnapLines || []).forEach(function (line) {
+      [{ x: line.x1, y: line.y1 }, { x: line.x2, y: line.y2 }].forEach(function (candidate) {
+        const d = Math.hypot(candidate.x - point.x, candidate.y - point.y);
+        if (d < distance) { closest = candidate; distance = d; }
+      });
+    });
+    setGridOrigin(closest || point);
+    choosingOrigin = false;
+    originButton.textContent = "设置网格原点";
+    status.textContent = closest ? "网格原点已对准墙线端点" : "网格原点已设在点击位置";
+  }, true);
 });
 </script>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>商用厨房空间编辑器</title>
@@ -183,9 +254,48 @@ const get=id=>lib.find(x=>x.id===id),rr=(x,y,w,h)=>({x,y,w,h}),hit=(a,b)=>a.x<b.
 function renderBase(){window.__setSvgCanvasSize=(width,height)=>{base={...sampleBase,width,height,elements:[],utilityPoints:[]};renderBase()};window.__resetCanvasSize=()=>{base=sampleBase;renderBase()};canvas.innerHTML="";canvas.style.width=base.width*M+"px";canvas.style.height=base.height*M+"px";canvas.style.backgroundSize=G+"px "+G+"px, "+G+"px "+G+"px, "+M+"px "+M+"px, "+M+"px "+M+"px";base.elements.forEach(e=>{let d=document.createElement("div");d.className="base "+e.type+(e.form==="half"?" half":"");d.title=e.type==="wall"?(e.structure==="bearing"?"承重全墙":e.form==="half"?"非承重半墙（可拆）":"非承重全墙"):"锁定"+e.type;d.style.cssText="left:"+e.x*M+"px;top:"+e.y*M+"px;width:"+e.width*M+"px;height:"+e.height*M+"px";canvas.append(d)});base.utilityPoints.forEach(u=>{let d=document.createElement("div");d.className="utility";d.textContent={power:"电",water:"水",drain:"排",gas:"气",exhaust:"烟"}[u.type];d.style.cssText="left:"+u.x*M+"px;top:"+u.y*M+"px;background:"+({power:"#7656a5",water:"#2185bd",drain:"#249b8a",gas:"#d64d42",exhaust:"#526a82"}[u.type]);d.title=u.type+" 接口";canvas.append(d)});renderDevices()}
 function renderDevices(){canvas.querySelectorAll(".device").forEach(x=>x.remove());layout.placements.forEach(p=>{let c=get(p.componentId);if(!c)return;let d=document.createElement("div");d.className="device"+(selected===p.instanceId?" selected":"");d.style.cssText="left:"+p.x*M+"px;top:"+p.y*M+"px;width:"+c.width*M+"px;height:"+c.height*M+"px;background:"+c.color+";transform:rotate("+(p.rotation||0)+"deg)";d.innerHTML="<div>"+c.name+"<small>"+c.width+"m × "+c.height+"m</small></div>"+(selected===p.instanceId?"<button class=\'rotate-handle\' title=\'每次旋转 90°\'>↻</button>":"");d.onpointerdown=e=>start(e,p,c);let h=d.querySelector(".rotate-handle");if(h)h.onpointerdown=e=>startRotate(e,p);canvas.append(d)})}
 const groups=[["prep","操作台 / 备餐"],["wash","用水 / 洗消"],["storage","冷藏 / 储藏"],["hot","炉灶 / 油炸"],["bake","烘焙 / 蒸烤"],["vent","排烟 / 出餐"]];function groupOf(c){return c.cat==="备餐"?"prep":c.cat==="洗消"?"wash":c.cat==="冷藏"||c.cat==="储存"?"storage":c.cat==="热厨"?"hot":c.cat==="烘焙"?"bake":"vent"}function renderShelf(){let filtered=lib.filter(c=>groupOf(c)===activeGroup),list=expanded?filtered:filtered.slice(page*6,page*6+6),box=$("items"),tabs=$("tabs");tabs.innerHTML=groups.map(g=>"<button class=\'tab "+(g[0]===activeGroup?"active":"")+"\' data-group=\'"+g[0]+"\'>"+g[1]+"</button>").join("");tabs.querySelectorAll("[data-group]").forEach(b=>b.onclick=()=>{activeGroup=b.dataset.group;page=0;expanded=false;renderShelf()});box.innerHTML="";box.style.flexWrap=expanded?"wrap":"nowrap";box.style.alignContent=expanded?"flex-start":"center";list.forEach(c=>{let d=document.createElement("div");d.className="module";d.draggable=true;d.innerHTML="<i class='ico "+c.ico+"'></i><b>"+c.name+"</b><small>"+c.width+"m × "+c.height+"m</small>";d.ondragstart=e=>e.dataTransfer.setData("component",c.id);box.append(d)});$("prev").disabled=expanded||page===0;$("next").disabled=expanded||(page+1)*6>=filtered.length;$("expand").textContent=expanded?"收起本类设备 ▴":"展开本类设备 ▾"}
-function snapToSvgWalls(x,y,c){const lines=window.__svgSnapLines||[],threshold=.18,overlaps=(a1,a2,b1,b2)=>a1<=b2+threshold&&a2>=b1-threshold;let bestX={value:x,distance:threshold},bestY={value:y,distance:threshold};lines.forEach(line=>{if(Math.abs(line.x1-line.x2)<.03&&overlaps(y,y+c.height,Math.min(line.y1,line.y2),Math.max(line.y1,line.y2))){[line.x1,line.x1-c.width].forEach(value=>{let distance=Math.abs(value-x);if(distance<bestX.distance){bestX={value,distance}}})}if(Math.abs(line.y1-line.y2)<.03&&overlaps(x,x+c.width,Math.min(line.x1,line.x2),Math.max(line.x1,line.x2))){[line.y1,line.y1-c.height].forEach(value=>{let distance=Math.abs(value-y);if(distance<bestY.distance){bestY={value,distance}}})}});return{x:Math.max(0,Math.min(bestX.value,base.width-c.width)),y:Math.max(0,Math.min(bestY.value,base.height-c.height))}}
-function place(e,c,ox=0,oy=0){let r=canvas.getBoundingClientRect(),x=Math.max(0,Math.min(Math.round((e.clientX-r.left-ox)/G)*STEP,base.width-c.width)),y=Math.max(0,Math.min(Math.round((e.clientY-r.top-oy)/G)*STEP,base.height-c.height));return snapToSvgWalls(x,y,c)}
+function snapToSvgWalls(left,top,width,height){
+  const lines=window.__svgSnapLines||[],threshold=.18,epsilon=.06;
+  const overlaps=(a1,a2,b1,b2,pad=0)=>a1<=b2+pad&&a2>=b1-pad;
+  const vertical=[],horizontal=[];
+  lines.forEach(line=>{
+    const half=line.halfWidth||0;
+    if(Math.abs(line.x1-line.x2)<.01){
+      const x=(line.x1+line.x2)/2;
+      [x+half,x-half-width].forEach(value=>{if(Math.abs(value-left)<=threshold)vertical.push({value,line,distance:Math.abs(value-left),x})});
+    }
+    if(Math.abs(line.y1-line.y2)<.01){
+      const y=(line.y1+line.y2)/2;
+      [y+half,y-half-height].forEach(value=>{if(Math.abs(value-top)<=threshold)horizontal.push({value,line,distance:Math.abs(value-top),y})});
+    }
+  });
+  let corner=null;
+  vertical.forEach(v=>horizontal.forEach(h=>{
+    const vx1=Math.min(h.line.x1,h.line.x2),vx2=Math.max(h.line.x1,h.line.x2);
+    const hy1=Math.min(v.line.y1,v.line.y2),hy2=Math.max(v.line.y1,v.line.y2);
+    if(!overlaps(v.x,v.x,vx1,vx2,epsilon)||!overlaps(h.y,h.y,hy1,hy2,epsilon))return;
+    if(!overlaps(h.value,h.value+height,hy1,hy2,epsilon)||!overlaps(v.value,v.value+width,vx1,vx2,epsilon))return;
+    const score=v.distance*v.distance+h.distance*h.distance;
+    if(!corner||score<corner.score)corner={left:v.value,top:h.value,score};
+  }));
+  if(corner)return corner;
+  const vx=vertical.filter(v=>overlaps(top,top+height,Math.min(v.line.y1,v.line.y2),Math.max(v.line.y1,v.line.y2),threshold)).sort((a,b)=>a.distance-b.distance)[0];
+  const hy=horizontal.filter(h=>overlaps(left,left+width,Math.min(h.line.x1,h.line.x2),Math.max(h.line.x1,h.line.x2),threshold)).sort((a,b)=>a.distance-b.distance)[0];
+  return{left:vx&&vx.value,top:hy&&hy.value};
+}
+function place(e,c,ox=0,oy=0,rotation=0){
+  const rect=canvas.getBoundingClientRect(),quarter=Math.abs(Math.round(Number(rotation||0)/90))%2;
+  const width=quarter?c.height:c.width,height=quarter?c.width:c.height;
+  const offsetX=(c.width-width)/2,offsetY=(c.height-height)/2;
+  const clamp=(value,max)=>Math.max(0,Math.min(value,Math.max(0,max)));
+  const left=clamp((e.clientX-rect.left-ox)/M+offsetX,base.width-width);
+  const top=clamp((e.clientY-rect.top-oy)/M+offsetY,base.height-height);
+  const origin=window.__gridOrigin||{x:0,y:0},wall=snapToSvgWalls(left,top,width,height);
+  const gridX=origin.x+Math.round((left-origin.x)/STEP)*STEP;
+  const gridY=origin.y+Math.round((top-origin.y)/STEP)*STEP;
+  return{x:clamp(wall.left===undefined?gridX:wall.left,base.width-width)-offsetX,y:clamp(wall.top===undefined?gridY:wall.top,base.height-height)-offsetY};
+}
 function start(e,p,c){e.preventDefault();let r=canvas.getBoundingClientRect();selected=p.instanceId;drag={p,c,ox:e.clientX-r.left-p.x*M,oy:e.clientY-r.top-p.y*M};renderDevices()}function startRotate(e,p){e.preventDefault();e.stopPropagation();selected=p.instanceId;p.rotation=(Number(p.rotation||0)+90)%360;renderDevices();$("status").textContent="已旋转 90°";}
 function validate(){let out=[],all=layout.placements.map(p=>({...p,c:get(p.componentId)}));all.forEach((p,i)=>{let a=rr(p.x,p.y,p.c.width,p.c.height);base.elements.filter(e=>["wall","door","window"].includes(e.type)).forEach(e=>{if(hit(a,rr(e.x,e.y,e.width,e.height)))out.push(["bad",p.c.name+" 与 "+(e.type==="wall"?"墙体":e.type==="door"?"门洞":"窗洞")+"重叠"])});all.slice(i+1).forEach(q=>{if(hit(a,rr(q.x,q.y,q.c.width,q.c.height)))out.push(["bad",p.c.name+" 与 "+q.c.name+" 重叠"])});(p.c.needs||[]).forEach(n=>{let pts=base.utilityPoints.filter(u=>u.type===n),cx=p.x+p.c.width/2,cy=p.y+p.c.height/2;if(!pts.length)out.push(["warn",p.c.name+" 未配置 "+n+" 接口"]);else if(!pts.some(u=>Math.hypot(u.x-cx,u.y-cy)<=3))out.push(["warn",p.c.name+" 距 "+n+" 接口超过 3m，请复核"])});if(Number(p.rotation||0)%90!==0)out.push(["warn",p.c.name+" 已自由旋转 "+Math.round(p.rotation)+"°；碰撞范围需人工复核"]);if(p.c.front&&p.y+p.c.height+p.c.front>base.height)out.push(["warn",p.c.name+" 前方操作净距不足 "+p.c.front+"m"])});$("result").innerHTML=out.length?out.map(x=>"<p class='"+x[0]+"'>● "+x[1]+"</p>").join(""):"<p class='ok'>✓ 未发现重叠、门窗/墙体占用或接口缺失。请结合消防、排烟与厂家安装图复核。</p>";$("status").textContent=out.length?"发现 "+out.length+" 项待处理":"校验通过"}
-canvas.ondragover=e=>e.preventDefault();canvas.ondrop=e=>{e.preventDefault();let c=get(e.dataTransfer.getData("component"));if(!c)return;let p=place(e,c,c.width*M/2,c.height*M/2),id="item_"+Date.now();layout.placements.push({instanceId:id,componentId:c.id,x:p.x,y:p.y,rotation:0});selected=id;renderDevices();$("status").textContent="已添加 "+c.name};window.onpointermove=e=>{if(!drag)return;let p=place(e,drag.c,drag.ox,drag.oy);drag.p.x=p.x;drag.p.y=p.y;renderDevices()};window.onpointerup=()=>{drag=null};canvas.onpointerdown=e=>{if(e.target===canvas){selected=null;renderDevices()}};
+canvas.ondragover=e=>e.preventDefault();canvas.ondrop=e=>{e.preventDefault();let c=get(e.dataTransfer.getData("component"));if(!c)return;let p=place(e,c,c.width*M/2,c.height*M/2),id="item_"+Date.now();layout.placements.push({instanceId:id,componentId:c.id,x:p.x,y:p.y,rotation:0});selected=id;renderDevices();$("status").textContent="已添加 "+c.name};window.onpointermove=e=>{if(!drag)return;let p=place(e,drag.c,drag.ox,drag.oy,drag.p.rotation);drag.p.x=p.x;drag.p.y=p.y;renderDevices()};window.onpointerup=()=>{drag=null};canvas.onpointerdown=e=>{if(e.target===canvas){selected=null;renderDevices()}};
 $("prev").onclick=()=>{page--;renderShelf()};$("next").onclick=()=>{page++;renderShelf()};$("expand").onclick=()=>{expanded=!expanded;renderShelf()};$("delete").onclick=()=>{if(!selected){$("status").textContent="请先选择设备";return}layout.placements=layout.placements.filter(p=>p.instanceId!==selected);selected=null;renderDevices();$("status").textContent="已删除设备"};$("validate").onclick=validate;$("export").onclick=()=>{let blob=new Blob([JSON.stringify({projectName:$("projectName").value,layout},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=($("projectName").value||"厨房方案")+".json";a.click();URL.revokeObjectURL(a.href)};$("import").onclick=()=>$("file").click();$("file").onchange=e=>{let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{try{let v=JSON.parse(r.result);layout=v.layout||v;selected=null;if(v.projectName)$("projectName").value=v.projectName;renderDevices();$("status").textContent="已导入方案"}catch{x=0;$("status").textContent="导入文件格式无效"}};r.readAsText(f)};renderShelf();renderBase()})();</script></body></html>
