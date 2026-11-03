@@ -1,5 +1,6 @@
 # 依赖
 node_modules/
+.electron-cache/
 __pycache__/
 *.pyc
 .venv/
@@ -28,3 +29,6 @@ dist/
 build/
 out/
 *.log
+
+# 每次本机 DWG 导入生成的 DXF / SVG / JSON 产物
+导入图纸/
