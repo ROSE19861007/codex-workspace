@@ -1,0 +1,17 @@
+{
+  "format": "kitchen-device-template-batch-v1",
+  "projectName": "selpain·万象天地店",
+  "deviceTemplates": [
+    {"id":"custom_selpain_two_door_freezer","name":"两门冷冻冰箱","cat":"冷藏","width":0.6,"height":0.76,"verticalHeight":1.92,"expandHorizontalMm":650,"expandVerticalMm":0},
+    {"id":"custom_selpain_four_door_freezer","name":"四门冷冻冰箱","cat":"冷藏","width":1.2,"height":0.76,"verticalHeight":1.92,"expandHorizontalMm":650,"expandVerticalMm":0},
+    {"id":"custom_selpain_upright_refrigerator","name":"立式冷藏柜","cat":"冷藏","width":0.775,"height":1.2,"verticalHeight":2.07,"expandHorizontalMm":650,"expandVerticalMm":0},
+    {"id":"custom_selpain_proofer","name":"立式醒发箱","cat":"烘焙","width":0.775,"height":1.2,"verticalHeight":2.07,"expandHorizontalMm":650,"expandVerticalMm":0},
+    {"id":"custom_selpain_oven","name":"烤箱","cat":"烘焙","width":1.58,"height":1.205,"verticalHeight":2.065,"expandHorizontalMm":650,"expandVerticalMm":0},
+    {"id":"custom_selpain_convection_oven","name":"热风炉","cat":"烘焙","width":0.93,"height":1.026,"verticalHeight":0.7,"expandHorizontalMm":650,"expandVerticalMm":0},
+    {"id":"custom_selpain_double_sink","name":"双星水池","cat":"洗消","width":1.2,"height":0.6,"verticalHeight":1.0,"expandHorizontalMm":0,"expandVerticalMm":0},
+    {"id":"custom_selpain_rack_cart","name":"层车","cat":"烘焙","width":0.72,"height":0.46,"verticalHeight":1.0,"expandHorizontalMm":0,"expandVerticalMm":0},
+    {"id":"custom_selpain_under_counter_a","name":"卧式冷藏柜 A","cat":"冷藏","width":1.5,"height":0.76,"verticalHeight":0.8,"expandHorizontalMm":650,"expandVerticalMm":0},
+    {"id":"custom_selpain_under_counter_b","name":"卧式冷藏柜 B","cat":"冷藏","width":1.8,"height":0.76,"verticalHeight":0.8,"expandHorizontalMm":650,"expandVerticalMm":0},
+    {"id":"custom_selpain_display_case","name":"展示柜","cat":"出餐","width":1.5,"height":0.76,"verticalHeight":0.8,"expandHorizontalMm":0,"expandVerticalMm":0}
+  ]
+}
